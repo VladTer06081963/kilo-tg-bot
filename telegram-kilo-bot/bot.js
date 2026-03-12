@@ -16,6 +16,9 @@ if (!TOKEN) {
     process.exit(1);
 }
 
+// Список разрешенных пользователей (Telegram ID)
+const ADMIN_IDS = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',').map(id => id.trim()) : [];
+
 // Инициализация бота
 const bot = new TelegramBot(TOKEN, { polling: true });
 
@@ -33,13 +36,6 @@ function runCommand(command, chatId, options = {}) {
     return new Promise((resolve, reject) => {
         const { cwd = PROJECTS_DIR, timeout = 300000 } = options; // Таймаут 5 минут по умолчанию
         
-        // Добавляем PATH для корректного выполнения команд
-        const execOptions = {
-            cwd,
-            timeout,
-            env: { ...process.env, PATH: '/Users/vlad/.nvm/versions/node/v20.18.0/bin:/usr/local/bin:/usr/bin:/bin' }
-        };
-        
         // Уведомление о начале выполнения
         const messageId = bot.sendMessage(chatId, `🔄 *Выполняется:*\n\`${command}\``, {
             parse_mode: 'Markdown'
@@ -47,12 +43,46 @@ function runCommand(command, chatId, options = {}) {
         
         console.log(`[${chatId}] Выполнение: ${command}`);
         
-        exec(command, execOptions, (error, stdout, stderr) => {
-            if (error) {
-                const errorMessage = `❌ *Ошибка:*\n\`${error.message}\``;
+        // Используем spawn для предотвращения инъекции команд
+        // Разбиваем команду на части для безопасного выполнения
+        const commandParts = command.trim().split(/\s+/);
+        const file = commandParts.shift();
+        const args = commandParts;
+        
+        const spawnOptions = {
+            cwd,
+            timeout,
+            env: { ...process.env, PATH: process.env.PATH },
+            maxBuffer: 1024 * 1024 * 5 // 5 МБ
+        };
+        
+        const { spawn } = require('child_process');
+        const child = spawn(file, args, spawnOptions);
+        
+        let stdout = '';
+        let stderr = '';
+        
+        child.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+        
+        child.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+        
+        child.on('error', (error) => {
+            const errorMessage = `❌ *Ошибка:*\n\`${error.message}\``;
+            bot.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
+            console.error(`[${chatId}] Ошибка: ${error.message}`);
+            reject(error);
+        });
+        
+        child.on('close', (code) => {
+            if (code !== 0) {
+                const errorMessage = `❌ *Ошибка:*\n\`Процесс завершился с кодом ${code}\``;
                 bot.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
-                console.error(`[${chatId}] Ошибка: ${error.message}`);
-                reject(error);
+                console.error(`[${chatId}] Процесс завершился с кодом: ${code}`);
+                reject(new Error(`Process exited with code ${code}`));
                 return;
             }
             
@@ -61,17 +91,25 @@ function runCommand(command, chatId, options = {}) {
             
             if (stdout) {
                 // Ограничиваем вывод, если слишком длинный
-                const output = stdout.length > 3500 
-                    ? stdout.substring(0, 3500) + '\n\n... (вывод обрезан)' 
+                const output = stdout.length > 3000 
+                    ? stdout.substring(0, 3000) + '\n\n... (вывод обрезан)' 
                     : stdout;
                 result += `\`\`\`\n${output}\n\`\`\``;
             }
             
             if (stderr) {
-                result += `\n⚠️ *Предупреждения:*\n\`${stderr.substring(0, 500)}\``;
+                result += `\n⚠️ *Предупреждения:*\n\`${stderr.substring(0, 200)}\``;
             }
             
-            bot.sendMessage(chatId, result, { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, result, { parse_mode: 'Markdown' })
+                .catch(err => {
+                    // Если сообщение слишком длинное, отправляем как документ
+                    const output = stdout || stderr || '';
+                    const buffer = Buffer.from(output);
+                    bot.sendDocument(chatId, buffer, { filename: 'output.log' })
+                        .catch(docErr => console.error(`[${chatId}] Ошибка отправки документа:`, docErr));
+                });
+            
             console.log(`[${chatId}] Выполнено успешно`);
             resolve(stdout);
         });
@@ -186,6 +224,13 @@ bot.onText(/\/help/, (msg) => {
 // Команда /create
 bot.onText(/\/create\s+(.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
+    
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
+    
     const projectName = match[1].trim().replace(/[^a-zA-Z0-9-_]/g, '');
     
     if (!projectName) {
@@ -204,6 +249,12 @@ bot.onText(/\/create\s+(.+)/, async (msg, match) => {
 // Команда /list
 bot.onText(/\/list/, (msg) => {
     const chatId = msg.chat.id;
+    
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
     
     if (!fs.existsSync(PROJECTS_DIR)) {
         bot.sendMessage(chatId, '📂 Проектов пока нет');
@@ -237,18 +288,45 @@ bot.onText(/\/list/, (msg) => {
 // Команда /delete
 bot.onText(/\/delete\s+(.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const projectName = match[1].trim();
+    
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
+    
+    let projectName = match[1].trim();
+    // Применяем ту же строгую валидацию, что и в команде /create
+    projectName = projectName.replace(/[^a-zA-Z0-9-_]/g, '');
+    
+    if (!projectName) {
+        bot.sendMessage(chatId, '⚠️ Некорректное имя проекта. Используйте только буквы, цифры, дефис и подчеркивание.');
+        return;
+    }
+    
     const projectPath = path.join(PROJECTS_DIR, projectName);
     
-    if (!fs.existsSync(projectPath)) {
+    // Дополнительная проверка: убедиться, что путь находится внутри PROJECTS_DIR
+    const resolvedProjectPath = path.resolve(projectPath);
+    const resolvedProjectsDir = path.resolve(PROJECTS_DIR);
+    if (!resolvedProjectPath.startsWith(resolvedProjectsDir)) {
+        bot.sendMessage(chatId, '⛔ Ошибка: попытка доступа вне разрешенной директории.');
+        return;
+    }
+    
+    if (!fs.existsSync(resolvedProjectPath)) {
         bot.sendMessage(chatId, `⚠️ Проект "${projectName}" не найден`);
         return;
     }
     
-    // Удаление директории
-    fs.rmSync(projectPath, { recursive: true, force: true });
-    
-    bot.sendMessage(chatId, `🗑️ Проект "${projectName}" удалён`);
+    try {
+        // Удаление директории асинхронно с обработкой ошибок
+        await fs.promises.rm(resolvedProjectPath, { recursive: true, force: true });
+        bot.sendMessage(chatId, `🗑️ Проект "${projectName}" удалён`);
+    } catch (error) {
+        console.error(`[${chatId}] Ошибка при удалении проекта: ${error.message}`);
+        bot.sendMessage(chatId, `❌ Ошибка при удалении проекта: ${error.message}`);
+    }
 });
 
 // Команда /run
@@ -272,8 +350,9 @@ bot.onText(/\/run\s+(.+)/, async (msg, match) => {
 bot.onText(/\/status/, (msg) => {
     const chatId = msg.chat.id;
     
-    // Проверка версии Kilo
-    exec('kilo --version', (error, stdout, stderr) => {
+    // Проверка версии Kilo с увеличенным maxBuffer
+    const execOptions = { maxBuffer: 1024 * 1024 * 5 }; // 5 МБ
+    exec(`"${KILO_PATH}" --version`, execOptions, (error, stdout, stderr) => {
         let status = '';
         
         if (error) {
@@ -282,8 +361,8 @@ bot.onText(/\/status/, (msg) => {
             status = `✅ *Kilo CLI:* \`${stdout.trim()}\``;
         }
         
-        // Проверка версии Node.js
-        exec('node --version', (err, nodeVersion) => {
+        // Проверка версии Node.js с увеличенным maxBuffer
+        exec('node --version', execOptions, (err, nodeVersion) => {
             const nodeStatus = err 
                 ? 'Node.js: неизвестно' 
                 : `Node.js: \`${nodeVersion.trim()}\``;
