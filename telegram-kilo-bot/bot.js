@@ -184,8 +184,14 @@ async function createExpressProject(projectName, chatId) {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const firstName = msg.from.first_name;
-    
-    bot.sendMessage(chatId, 
+
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
+
+    bot.sendMessage(chatId,
         `Привет, ${firstName}! 👋\n\n` +
         '🤖 *Kilo CLI Telegram Bot*\n\n' +
         'Я помогу тебе создавать проекты с помощью Kilo CLI.\n\n' +
@@ -203,8 +209,14 @@ bot.onText(/\/start/, (msg) => {
 // Команда /help
 bot.onText(/\/help/, (msg) => {
     const chatId = msg.chat.id;
-    
-    bot.sendMessage(chatId, 
+
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
+
+    bot.sendMessage(chatId,
         '*📖 Справка*\n\n' +
         '*Основные команды:*\n\n' +
         '/create myapp — Создать проект с именем myapp\n' +
@@ -332,13 +344,20 @@ bot.onText(/\/delete\s+(.+)/, async (msg, match) => {
 // Команда /run
 bot.onText(/\/run\s+(.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
+
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
+
     const command = match[1].trim();
-    
+
     if (!command) {
         bot.sendMessage(chatId, '⚠️ Укажите команду: /run [запрос]');
         return;
     }
-    
+
     try {
         await runCommand(`${KILO_PATH} run --auto "${command}"`, chatId);
     } catch (error) {
@@ -349,25 +368,31 @@ bot.onText(/\/run\s+(.+)/, async (msg, match) => {
 // Команда /status
 bot.onText(/\/status/, (msg) => {
     const chatId = msg.chat.id;
-    
+
+    // Проверка доступа по белому списку
+    if (ADMIN_IDS.length > 0 && !ADMIN_IDS.includes(msg.from.id.toString())) {
+        bot.sendMessage(chatId, '⛔ Доступ запрещен. Вы не авторизованы для использования этого бота.');
+        return;
+    }
+
     // Проверка версии Kilo с увеличенным maxBuffer
     const execOptions = { maxBuffer: 1024 * 1024 * 5 }; // 5 МБ
     exec(`"${KILO_PATH}" --version`, execOptions, (error, stdout, stderr) => {
         let status = '';
-        
+
         if (error) {
             status = '❌ *Kilo CLI не установлен*';
         } else {
             status = `✅ *Kilo CLI:* \`${stdout.trim()}\``;
         }
-        
+
         // Проверка версии Node.js с увеличенным maxBuffer
         exec('node --version', execOptions, (err, nodeVersion) => {
-            const nodeStatus = err 
-                ? 'Node.js: неизвестно' 
+            const nodeStatus = err
+                ? 'Node.js: неизвестно'
                 : `Node.js: \`${nodeVersion.trim()}\``;
-            
-            bot.sendMessage(chatId, 
+
+            bot.sendMessage(chatId,
                 `${status}\n${nodeStatus}`,
                 { parse_mode: 'Markdown' }
             );
