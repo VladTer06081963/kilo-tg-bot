@@ -31,21 +31,55 @@ if (!fs.existsSync(PROJECTS_DIR)) {
     console.log('📁 Создана директория для проектов');
 }
 
+// Функция парсинга командной строки с учетом кавычек
+function parseCommandLine(command) {
+    const args = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+
+    for (let i = 0; i < command.length; i++) {
+        const char = command[i];
+        if (inQuotes) {
+            if (char === quoteChar) {
+                inQuotes = false;
+                quoteChar = '';
+            } else {
+                current += char;
+            }
+        } else {
+            if (char === '"' || char === "'") {
+                inQuotes = true;
+                quoteChar = char;
+            } else if (char === ' ' || char === '\t') {
+                if (current) {
+                    args.push(current);
+                    current = '';
+                }
+            } else {
+                current += char;
+            }
+        }
+    }
+    if (current) args.push(current);
+    return args;
+}
+
 // Функция выполнения команды с выводом в Telegram
 function runCommand(command, chatId, options = {}) {
     return new Promise((resolve, reject) => {
         const { cwd = PROJECTS_DIR, timeout = 300000 } = options; // Таймаут 5 минут по умолчанию
-        
+
         // Уведомление о начале выполнения
         const messageId = bot.sendMessage(chatId, `🔄 *Выполняется:*\n\`${command}\``, {
             parse_mode: 'Markdown'
         }).then(m => m.message_id);
-        
+
         console.log(`[${chatId}] Выполнение: ${command}`);
-        
+
         // Используем spawn для предотвращения инъекции команд
-        // Разбиваем команду на части для безопасного выполнения
-        const commandParts = command.trim().split(/\s+/);
+        // Разбиваем команду на части для безопасного выполнения с учетом кавычек
+        const commandParts = parseCommandLine(command.trim());
         const file = commandParts.shift();
         const args = commandParts;
         
