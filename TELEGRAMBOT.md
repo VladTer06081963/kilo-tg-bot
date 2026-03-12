@@ -25,7 +25,7 @@
 
 ### Архитектура решения
 
-```
+```text
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Telegram      │────▶│   Node.js       │────▶│   Kilo CLI      │
 │   пользователь  │     │   Telegram Bot  │     │   (автономный)  │
@@ -126,7 +126,7 @@ kilo --help
 
 Отправьте `/setdescription` боту @BotFather для установки описания:
 
-```
+```bash
 Команды:
 /create [имя] - Создать Express + Pug проект
 /list - Список проектов
@@ -161,7 +161,7 @@ npm install node-telegram-bot-api dotenv
 
 Создайте следующую структуру файлов:
 
-```
+```text
 telegram-kilo-bot/
 ├── bot.js              # Основной файл бота
 ├── .env                # Переменные окружения
@@ -498,7 +498,7 @@ node bot.js
 
 Вы должны увидеть:
 
-```
+```text
 🤖 Telegram-бот запущен и готов к работе!
 📂 Проекты будут создаваться в: /path/to/telegram-kilo-bot/projects
 ```
@@ -516,7 +516,7 @@ node bot.js
 
 Отправьте боту:
 
-```
+```text
 /create myexpressapp
 ```
 
@@ -622,9 +622,12 @@ bot.onText(/\/create (.+)/, async (msg, match) => {
 **Проблема:** В файле `.env` не указан токен или файл отсутствует.
 
 **Решение:**
+
 1. Проверьте наличие файла `.env` в корне проекта
+
 2. Убедитесь, что токен указан правильно:
-   ```env
+
+   ```.env
    TELEGRAM_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
    ```
 
@@ -633,6 +636,7 @@ bot.onText(/\/create (.+)/, async (msg, match) => {
 **Проблема:** Kilo CLI не установлен глобально.
 
 **Решение:**
+
 ```bash
 npm install -g @kilocode/cli
 ```
@@ -642,6 +646,7 @@ npm install -g @kilocode/cli
 **Проблема:** Бот не может подключиться к Telegram.
 
 **Решение:**
+
 1. Проверьте интернет-соединение
 2. Убедитесь, что токен бота валидный
 3. Попробуйте перезапустить бота
@@ -661,6 +666,7 @@ await runCommand(command, chatId, { timeout: 600000 }); // 10 минут
 **Проблема:** Polling не запустился.
 
 **Решение:**
+
 1. Проверьте, запущен ли бот: `node bot.js`
 2. Проверьте консоль на наличие ошибок
 3. Перезапустите бота: остановите (Ctrl+C) и запустите снова
@@ -671,7 +677,7 @@ await runCommand(command, chatId, { timeout: 600000 }); // 10 минут
 
 После завершения всех шагов у вас будет:
 
-```
+```text
 telegram-kilo-bot/
 ├── bot.js              # Основной код бота (200+ строк)
 ├── .env                # Токен Telegram-бота
@@ -728,4 +734,6 @@ pm2 logs telegram-kilo-bot
 
 ---
 
-*Гайд создан для версии node-telegram-bot-api@latest и Kilo CLI@latest*
+**Гайд создан для версии
+
+node-telegram-bot-api@latest и Kilo CLI@latest**
